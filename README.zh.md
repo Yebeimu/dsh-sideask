@@ -2,6 +2,8 @@
 
 在任意 DSH 会话里，查看并回答别的会话挂着的 `ask_user_question`，不用切过去。
 
+**Powered by [DSH](https://github.com/deepseek-ai/deepseek-harness)**，是个插件，不是分支。
+
 [English](README.md)
 
 ## 解决什么

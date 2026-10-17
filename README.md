@@ -2,6 +2,8 @@
 
 See and answer `ask_user_question` prompts from other DSH sessions, without leaving the one you are in.
 
+**Powered by [DSH](https://github.com/deepseek-ai/deepseek-harness)** — a plugin, not a fork.
+
 [中文说明](README.zh.md)
 
 ## The problem
