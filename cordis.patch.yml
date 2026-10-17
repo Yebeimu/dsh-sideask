@@ -1,0 +1,6 @@
+# dsh-sideask 的 host 半入口。
+# 客户端半（侧栏底部「待答 N」+ 左下角浮层）由本包 package.json 的 dsh.client 段
+# 交给 dsh-client-modules 扫描后加载，bundle 路由自动发到浏览器。
+- insert:
+    - id: dsh-sideask
+      name: '@local/dsh-sideask'
