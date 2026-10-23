@@ -130,8 +130,25 @@ export function apply(ctx) {
         return
       }
 
+      // 用户在原生的 ask_user_question 卡片上作答时，dsh-user-questions 会插一条 user message：
+      //   source = { kind: 'user-question-reply', callId, outcome: 'answered' }
+      // 那条消息就是关闭问题的记录。timed 模式到期已经返回过 pending，用户后来在原生卡片上答了，
+      // 这边收不到别的通知，记录会一直挂到 MAX_AGE 才过期。
+      // 判据用 source.kind，不看 content 里的文本（那段是 answer_to_pending_question 的 JSON 字符串）。
+      {
+        const d = event.data || {}
+        const sources = [d.source, d.message && d.message.source].filter(Boolean)
+        for (const s of sources) {
+          if (String(s.kind || '') !== 'user-question-reply') continue
+          const cid = String(s.callId || '')
+          if (!cid) continue
+          const k = sid + '|' + cid
+          if (pending.delete(k)) log(`划掉（原生卡片作答）${k}`)
+        }
+      }
+
       // 回合结束不等于问题结束：到期挂起的提问跨回合有效。
-      // 真正答掉时由 /dsh-sideask/answer 那一路划，或者过了 MAX_AGE 自动清。
+      // 真正答掉时由 /dsh-sideask/answer 那条路划，或者过了 MAX_AGE 自动清。
       if (event.type === 'turn/end') return;
     } catch (e) {
       log(`session/event 出错：${e && e.message ? e.message : e}`)
@@ -145,9 +162,13 @@ export function apply(ctx) {
       try {
         const url = new URL(req.url, 'http://127.0.0.1')
         const want = String(url.searchParams.get('session') || '')
+        const wantCwd = String(url.searchParams.get('cwd') || '')
         // 单工作区：以请求方所在会话的 cwd 为准，只返回同一个 cwd 的待答。
-        let baseCwd = ''
-        if (want) {
+        // 2026-10-18：客户端直接传 cwd 时就用它。0.2.1 的 client 端 sessions 服务里没有
+        // list / current / getSnapshot，插件拿不到当前会话 id，所以改由组件从 slot props 的
+        // useSessions 读出 cwd 再传过来。session 参数留着，别的调用方还能用。
+        let baseCwd = wantCwd
+        if (!baseCwd && want) {
           const a = (ctx.agents.roots() || []).find(
             (x) => String((x.session && x.session.id) || '') === want,
           )

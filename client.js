@@ -49,27 +49,15 @@ window.__ModuleLoader__.load({
     // 中间那段时间还列着，看起来像没发出去。
     const sentKeys = new Set()
 
-    function currentSessionId() {
-      try {
-        const s = services && services.sessions
-        const snap = s && s.list && s.list.getSnapshot && s.list.getSnapshot()
-        if (snap && snap.current) return String(snap.current)
-        if (s && typeof s.current === 'function') {
-          const v = s.current()
-          if (v) return String(v)
-        }
-        if (s && typeof s.getSnapshot === 'function') {
-          const v = s.getSnapshot()
-          if (v && v.current) return String(v.current)
-        }
-      } catch (e) {}
-      return ''
-    }
+    // 2026-10-18：当前会话的 cwd 由 FootAction 从 slot props 的 useSessions 读出来写在这里。
+    // 原来调 sessions.list.getSnapshot / sessions.current 那一套，0.2.1 的 client 端 sessions
+    // 服务里没有这些方法，永远返回空；空就不带参数，服务端 baseCwd 也为空，单工作区过滤退化成
+    // 返回全部。现在直接传 cwd。
+    let currentCwd = ''
 
     async function refresh() {
       try {
-        const sid = currentSessionId()
-        const q = sid ? ('?session=' + encodeURIComponent(sid)) : ''
+        const q = currentCwd ? ('?cwd=' + encodeURIComponent(currentCwd)) : ''
         const r = await fetch('/dsh-sideask/list' + q, { cache: 'no-store' })
         if (r.ok) {
           const d = await r.json()
@@ -279,13 +267,42 @@ window.__ModuleLoader__.load({
     }
 
     // ── 侧栏底部的入口 ────────────────────────────────────────
-    function FootAction() {
+    function FootAction(props) {
       const isOpen = useSharedOpen()
       const [count, setCount] = React.useState((cache.items || []).length)
 
+      // slot 的 standardProps 里只有 useSessions 这一串钩子，没有 sessionId。
+      // 当前会话 id 从侧栏树的选中行读：aria-selected 的那个 treeitem，data-row-key 形如
+      // session:session-xxx。拿到 id 再用 useSessions 的 byId 查它的 cwd。
+      const useSessions = props && typeof props.useSessions === 'function' ? props.useSessions : null
+      const snap = useSessions ? useSessions(function (s) { return s }) : null
+
+      function selectedSessionId() {
+        try {
+          const el = document.querySelector('[data-slot="sidebar"] [role="treeitem"][aria-selected="true"]')
+          const k = el && el.getAttribute('data-row-key')
+          if (k && k.indexOf('session:') === 0) return k.slice(8)
+        } catch (e) {}
+        return ''
+      }
+
+      React.useEffect(() => {
+        const apply = () => {
+          const sid = selectedSessionId()
+          if (!sid) return
+          const cwd = snap && snap.byId && snap.byId[sid] ? String(snap.byId[sid].cwd || '') : ''
+          if (cwd && cwd !== currentCwd) {
+            currentCwd = cwd
+            refresh()
+          }
+        }
+        apply()
+        const t = setInterval(apply, 3000)
+        return () => clearInterval(t)
+      }, [snap])
+
       React.useEffect(() => {
         subs.add(() => setCount((cache.items || []).length))
-        refresh()
         const t = setInterval(refresh, 4000)
         return () => clearInterval(t)
       }, [])
